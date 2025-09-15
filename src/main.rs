@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 use crate::config::{Config};
 use crate::patches::apply_patch;
-use crate::templates::{GITIGNORE, APP_H, APP_C};
+use crate::templates::{GITIGNORE, APP_H, APP_C, README_MD};
 use crate::utils::get_author;
 
 #[derive(Parser)]
@@ -49,6 +49,7 @@ fn main() -> std::io::Result<()> {
     render_file(".gitignore", GITIGNORE, &ctx, cli.force)?;
     render_file("UserCode/app/app.h", APP_H, &ctx, cli.force)?;
     render_file("UserCode/app/app.c", APP_C, &ctx, cli.force)?;
+    render_file("UserCode/README.md", README_MD, &ctx, cli.force)?;
 
     // 内置 patch 配置
     let default_config: Config = serde_yaml_ng::from_str(include_str!("config.yaml")).unwrap();
