@@ -3,17 +3,17 @@ mod patches;
 mod templates;
 mod utils;
 
-use clap::Parser;
+use crate::config::Config;
+use crate::patches::apply_patch;
+use crate::templates::{APP_C, APP_H, CLANG_FORMAT, GITIGNORE, README_MD};
+use crate::utils::get_author;
 use chrono::Local;
-use handlebars::Handlebars;
+use clap::Parser;
 use serde::Serialize;
-use tracing::{info, warn};
 use std::fs;
 use std::path::Path;
-use crate::config::{Config};
-use crate::patches::apply_patch;
-use crate::templates::{GITIGNORE, APP_H, APP_C, README_MD};
-use crate::utils::get_author;
+use tinytemplate::TinyTemplate;
+use tracing::{info, warn};
 
 #[derive(Parser)]
 struct Cli {
@@ -47,6 +47,7 @@ fn main() -> std::io::Result<()> {
 
     // 渲染模板文件
     render_file(".gitignore", GITIGNORE, &ctx, cli.force)?;
+    render_file(".clang-format", CLANG_FORMAT, &ctx, cli.force)?;
     render_file("UserCode/app/app.h", APP_H, &ctx, cli.force)?;
     render_file("UserCode/app/app.c", APP_C, &ctx, cli.force)?;
     render_file("UserCode/README.md", README_MD, &ctx, cli.force)?;
@@ -62,17 +63,22 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn render_file(path: &str, template: &str, ctx: &Context, force: bool) -> std::io::Result<()> {
+pub fn render_file<T: Serialize>(path: &str, template: &str, ctx: &T, force: bool) -> std::io::Result<()> {
     if Path::new(path).exists() && !force {
         warn!("Skip existing {}", path);
         return Ok(());
     }
+
     if let Some(parent) = Path::new(path).parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut hb = Handlebars::new();
-    hb.register_template_string("tpl", template).unwrap();
-    let content = hb.render("tpl", ctx).unwrap();
+
+    let mut tt = TinyTemplate::new();
+    tt.add_template("tpl", template).unwrap();
+
+    // 渲染模板
+    let content = tt.render("tpl", ctx).unwrap();
+
     fs::write(path, content)?;
     info!("Generated {}", path);
     Ok(())
