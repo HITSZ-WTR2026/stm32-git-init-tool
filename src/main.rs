@@ -35,7 +35,21 @@ fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
     let cli = Cli::parse();
 
-    // 渲染上下文
+    // 1. 加载配置（用用户提供的或内置的）
+    let config_str = if cli.config.is_empty() {
+        include_str!("config.yaml").to_string()
+    } else {
+        fs::read_to_string(&cli.config)?
+    };
+    let config: Config = serde_yaml_ng::from_str(&config_str).unwrap();
+
+    // 2. 创建目录
+    for dir in &config.directories {
+        fs::create_dir_all(dir)?;
+        info!("Created dir {}", dir);
+    }
+
+    // 3. 渲染上下文
     let author = get_author();
 
     let now = Local::now();
@@ -45,17 +59,15 @@ fn main() -> std::io::Result<()> {
         year: now.format("%Y").to_string(),
     };
 
-    // 渲染模板文件
+    // 4. 渲染模板文件
     render_file(".gitignore", GITIGNORE, &ctx, cli.force)?;
     render_file(".clang-format", CLANG_FORMAT, &ctx, cli.force)?;
     render_file("UserCode/app/app.h", APP_H, &ctx, cli.force)?;
     render_file("UserCode/app/app.c", APP_C, &ctx, cli.force)?;
     render_file("UserCode/README.md", README_MD, &ctx, cli.force)?;
 
-    // 内置 patch 配置
-    let default_config: Config = serde_yaml_ng::from_str(include_str!("config.yaml")).unwrap();
-
-    for patch in default_config.patches {
+    // 5. 应用 patch
+    for patch in config.patches {
         apply_patch(&patch)?;
         info!("Patched {:?}", patch);
     }

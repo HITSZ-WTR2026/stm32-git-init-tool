@@ -4,14 +4,15 @@ use serde::Deserialize;
 #[serde(tag = "mode")]
 pub enum Patch {
     #[serde(rename = "append")]
-    Append {file: String, after: String, insert: String, marker: String},
+    Append { file: String, after: String, insert: String, marker: String },
     #[serde(rename = "replace")]
-    Replace {file: String, find: String, insert: String},
-    #[serde(rename="regex_replace")]
-    RegexReplace {file: String, pattern: String, insert: String}
+    Replace { file: String, find: String, insert: String },
+    #[serde(rename = "regex_replace")]
+    RegexReplace { file: String, pattern: String, insert: String },
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
-    pub patches: Vec<Patch>
+    pub directories: Vec<String>,
+    pub patches: Vec<Patch>,
 }

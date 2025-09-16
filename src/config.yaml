@@ -1,3 +1,12 @@
+directories:
+  - UserCode/bsp
+  - UserCode/drivers
+  - UserCode/third_party
+  - UserCode/libs
+  - UserCode/interfaces
+  - UserCode/controllers
+  - UserCode/app
+
 patches:
   - mode: "append"
     file: "CMakeLists_template.txt"
