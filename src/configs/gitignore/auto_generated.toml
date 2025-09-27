@@ -1,0 +1,7 @@
+name = "Auto-generated files"
+description = "auto-generated files by ide"
+enabled = true
+
+[sections.clion]
+enabled = true
+files = ["CMakeLists.txt"]

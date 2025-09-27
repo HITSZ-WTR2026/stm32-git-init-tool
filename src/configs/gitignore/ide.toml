@@ -1,0 +1,24 @@
+name = "IDE and Editor files"
+description = "IDE projects, editor configs, plugins"
+enabled = true
+
+[sections.clion]
+enabled = false
+files = [".idea/"]
+
+[sections.vscode]
+enabled = false
+files = [".vscode/"]
+
+[sections.eide]
+enabled = false
+files = [".eide*"]                      # 启用忽略时
+files_disabled = [".eide*", "!.eide/"]  # 禁用忽略时
+
+[sections.keil]
+enabled = true
+files = ["*.uvprojx", "*.uvoptx"]
+
+[sections.iar]
+enabled = true
+files = ["*.eww", "*.ewd", "*.ewp"]

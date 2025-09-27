@@ -8,6 +8,7 @@ directories:
   - UserCode/app
 
 patches:
+  # 非侵入式引入头文件
   - mode: "append"
     file: "CMakeLists_template.txt"
     after: "add_executable"
@@ -16,8 +17,10 @@ patches:
   - mode: "append"
     file: "Makefile"
     marker: "UserCode/app/app.h"
-    after: "CFLAGS +="
+    after: "CFLAGS += $(MCU)"
     insert: "# 非侵入式引入头文件\nCFLAGS += -include UserCode/app/app.h"
+
+  # CLion 环境初始化
   - mode: "replace"
     file: "CMakeLists_template.txt"
     find: "include_directories(${includes})"
@@ -26,3 +29,7 @@ patches:
     file: "CMakeLists_template.txt"
     find: "file(GLOB_RECURSE SOURCES ${sources})"
     insert: "file(GLOB_RECURSE SOURCES ${sources} \"UserCode/*.*\")"
+  - mode: "regex_replace"
+    file: "CMakeLists_template.txt"
+    pattern: "(?ms)^#Uncomment for hardware floating point(?:\\n#.*?)*\\n?(?=\\n|$)"
+    insert: "${0/#/}"

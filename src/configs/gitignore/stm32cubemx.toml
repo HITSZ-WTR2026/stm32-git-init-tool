@@ -1,0 +1,23 @@
+name = "STM32CubeMX"
+description = "CubeMX auto-generated sources and metadata"
+enabled = true
+
+ignore = [
+    "Core/",
+    "Drivers/",
+    "Middlewares/",
+    "USB_Device/",
+    "FATFS/",
+    "LWIP/",
+    "MX/",
+    "TouchGFX/",
+    "Utilities/",
+    ".startup/",
+    "startup_stm32*.s",
+    "*.ld",
+    ".settings/",
+    ".ioc.xml",
+    "*.ioc.bak",
+    ".mxproject",
+    ".mxresources"
+]
