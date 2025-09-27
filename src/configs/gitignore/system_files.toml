@@ -1,0 +1,8 @@
+name = "System files"
+description = "OS-specific system files"
+enabled = true
+
+ignore = [
+    ".DS_Store",
+    "Thumbs.db"
+]
