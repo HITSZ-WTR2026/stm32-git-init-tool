@@ -1,0 +1,12 @@
+config load {project_name}.ioc
+# 配置时钟
+clock set PLLSource 1
+clock set PLLM 4
+clock set PLLN 168
+clock set SysClkSource 2
+clock set APB1CLKDivider 4
+clock set APB2CLKDivider 2
+#
+# set ip no_ui_warning FreeRTOS
+project generate
+exit

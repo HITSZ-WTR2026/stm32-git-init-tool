@@ -1,0 +1,22 @@
+load STM32F407VETx
+# 配置时钟为外部高速晶振
+set mode RCC "HSE-External-Oscillator"
+set mode SYS "Serial Wire"
+# 用 TIM6 作为系统时钟
+set mode SYS "TIM7"
+#
+project couplefilesbyip 1
+SetCopyLibrary "copy only"
+project toolchain "STM32CubeIDE"
+project generateunderroot 1
+SetStructure Advanced
+# 配置 FreeRTOS
+set mode FreeRTOS CMSIS_V2
+set ip parameters FreeRTOS configENABLE_FPU 1
+set ip parameters FreeRTOS Tasks01 "defaultTask,16,128,StartDefaultTask,As weak,NULL,Dynamic,NULL,NULL;init,55,128,Init,As external,NULL,Dynamic,NULL,NULL"
+#
+project name {project_name}
+project path {project_dir}
+project save
+#
+exit
