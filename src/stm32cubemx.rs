@@ -1,9 +1,12 @@
+use anyhow::Result;
 use rand::distr::Alphanumeric;
 use rand::{rng, Rng};
-use std::fs;
+use std::env::VarError;
+use std::fmt::Write;
 use std::fs::{remove_file, File};
-use std::io::Write;
+use std::io::Write as IoWrite;
 use std::process::{Command, Stdio};
+use std::{env, fs};
 use tracing::{error, warn};
 
 fn generate_random_string(length: usize) -> String {
@@ -71,43 +74,60 @@ fn get_toolchain(toolchain: &Toolchain) -> &'static str {
     }
 }
 
-pub fn generate_code(toolchain: Option<Toolchain>) -> Result<(), ()> {
+pub fn generate_code(toolchain: Option<Toolchain>) -> Result<()> {
     let ioc_files = get_ioc_files();
     if ioc_files.len() != 1 {
         warn!("No ioc file is provided or multiple ioc files are provided.");
-        return Err(());
+        return Err(anyhow::anyhow!(
+            "No ioc file is provided or multiple ioc files are provided."
+        ));
     }
     let ioc_file = ioc_files.first().unwrap();
-    let tmp_path = format!("./tmp-script-{}", generate_random_string(8));
-    {
-        let mut temp_script_file = File::create_new(&tmp_path).unwrap();
-        temp_script_file
-            .write_all(format!("config load {}\n", ioc_file).as_bytes())
-            .unwrap();
-        if let Some(toolchain) = toolchain {
-            temp_script_file
-                .write_all(
-                    format!("project toolchain \"{}\"\n", get_toolchain(&toolchain)).as_bytes(),
-                )
-                .unwrap();
-            if let Toolchain::STM32CubeIDE = toolchain {
-                // Generate Under Root on
-                temp_script_file
-                    .write_all("project generateunderroot 1".as_bytes())
-                    .unwrap();
-            }
+    let mut script = String::new();
+    write!(script, "config load {}\n", ioc_file)?;
+    if let Some(toolchain) = toolchain {
+        write!(
+            script,
+            "project toolchain \"{}\"\n",
+            get_toolchain(&toolchain)
+        )?;
+        if let Toolchain::STM32CubeIDE = toolchain {
+            // Generate Under Root on
+            write!(script, "project generateunderroot 1")?;
         }
-        // Generate peripheral initialization as a pair of '.c/.h' files per peripheral
-        temp_script_file
-            .write_all("project couplefilesbyip 1\n".as_bytes())
-            .unwrap();
-        temp_script_file
-            .write_all("project generate\n".as_bytes())
-            .unwrap();
-        temp_script_file.write_all("exit".as_bytes()).unwrap();
     }
+    // Generate peripheral initialization as a pair of '.c/.h' files per peripheral
+    write!(script, "project couplefilesbyip 1\n")?;
+    write!(script, "project generate\n")?;
+    write!(script, "exit")?;
+
+    run_script(script)
+}
+
+pub fn run_script(script: String) -> Result<()> {
+    let tmp_path = format!("./tmp-script-{}", generate_random_string(8));
+    let mut temp_script_file = File::create_new(&tmp_path)?;
+    temp_script_file.write_all(script.as_bytes())?;
     let status = if cfg!(target_os = "windows") {
-        return Err(());
+        // return Err(anyhow::anyhow!("not support windows"));
+        let dir = match env::var("STM32CubeMX_dir") {
+            Ok(dir) => dir,
+            Err(_) => {
+                error!(
+                    "Environment variable STM32CubeMX_dir is not set. Please configure the STM32CubeMX installation path."
+                );
+                return Err(anyhow::anyhow!(
+                    "Missing environment variable: STM32CubeMX_dir"
+                ));
+            }
+        };
+        Command::new("cmd")
+            .args([
+                "/C",
+                format!("{dir}\\jre\\bin\\java.exe -jar {dir}\\STM32CubeMX.exe -s {tmp_path} -q")
+                    .as_str(),
+            ])
+            .status()
     } else {
         Command::new("stm32cubemx")
             .arg("-s")
@@ -117,16 +137,16 @@ pub fn generate_code(toolchain: Option<Toolchain>) -> Result<(), ()> {
             .arg("-q")
             .status()
     };
-    remove_file(tmp_path).unwrap();
+    remove_file(tmp_path)?;
     match status {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => {
-            error!("Generate failed with status: {}", status);
-            Err(())
+            error!("Run script failed with status: {}", status);
+            Err(anyhow::anyhow!("Run script failed with status: {}", status))
         }
         Err(e) => {
             error!("Failed to execute stm32cubemx: {}", e);
-            Err(())
+            Err(anyhow::anyhow!("Failed to execute stm32cubemx: {}", e))
         }
     }
 }
