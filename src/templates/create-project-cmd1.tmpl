@@ -6,17 +6,20 @@ set mode SYS "Serial Wire"
 set mode SYS "TIM7"
 #
 project couplefilesbyip 1
-SetCopyLibrary "copy only"
-project toolchain "STM32CubeIDE"
+project toolchain "{toolchain}"
+{{ if generate_under_root }}
 project generateunderroot 1
+{{ endif }}
 SetStructure Advanced
+SetCopyLibrary "copy only"
 # 配置 FreeRTOS
 set mode FreeRTOS CMSIS_V2
 set ip parameters FreeRTOS configENABLE_FPU 1
 set ip parameters FreeRTOS Tasks01 "defaultTask,16,128,StartDefaultTask,As weak,NULL,Dynamic,NULL,NULL;init,55,128,Init,As external,NULL,Dynamic,NULL,NULL"
 #
-project name {project_name}
-project path {project_dir}
-project save
+#project path {project_dir}
+#project name {project_name}
+#project save
+config saveas {ioc_file_path}
 #
 exit

@@ -1,7 +1,8 @@
 use anyhow::Result;
+use clap::ValueEnum;
 use rand::distr::Alphanumeric;
 use rand::{rng, Rng};
-use std::env::VarError;
+use std::cmp::PartialEq;
 use std::fmt::Write;
 use std::fs::{remove_file, File};
 use std::io::Write as IoWrite;
@@ -35,7 +36,7 @@ fn get_ioc_files() -> Vec<String> {
     ioc_files
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 pub enum Toolchain {
     /// EWARM V8.32
     EwarmV832,
@@ -52,14 +53,17 @@ pub enum Toolchain {
     /// MDK-ARM V4
     MdmArmV400,
     /// STM32CubeIDE
+    #[value(name = "stm32cubeide")]
     STM32CubeIDE,
     /// Makefile
+    #[value(name = "makefile")]
     Makefile,
     /// CMake
+    #[value(name = "cmake")]
     CMake,
 }
 
-fn get_toolchain(toolchain: &Toolchain) -> &'static str {
+pub fn get_toolchain(toolchain: &Toolchain) -> &'static str {
     match toolchain {
         Toolchain::EwarmV832 => "EWARM V8.32",
         Toolchain::EwarmV800 => "EWARM V8",
