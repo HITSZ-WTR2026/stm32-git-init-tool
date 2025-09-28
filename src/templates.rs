@@ -6,3 +6,6 @@ pub const CLANG_FORMAT: &str = include_str!("templates/clang-format.tmpl");
 
 pub const CREATE_PROJECT_CMD1: &str = include_str!("templates/create-project-cmd1.tmpl");
 pub const CREATE_PROJECT_CMD2: &str = include_str!("templates/create-project-cmd2.tmpl");
+
+pub const EIDE_CONFIG: &str = include_str!("templates/eide-config.tmpl");
+pub const EIDE_WORKSPACE: &str = include_str!("templates/eide-workspace.tmpl");
