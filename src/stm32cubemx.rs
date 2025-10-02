@@ -97,7 +97,7 @@ pub fn generate_code(toolchain: Option<Toolchain>) -> Result<()> {
         )?;
         if let Toolchain::STM32CubeIDE = toolchain {
             // Generate Under Root on
-            write!(script, "project generateunderroot 1")?;
+            write!(script, "project generateunderroot 1\n")?;
         }
     }
     // Generate peripheral initialization as a pair of '.c/.h' files per peripheral
