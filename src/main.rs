@@ -1,36 +1,27 @@
-mod contexts;
 mod generate_gitignore;
+mod initializers;
 mod patches;
 mod render;
 mod stm32cubemx;
-mod templates;
 mod utils;
 
 use crate::contexts::{CreateContext, EIDEConfigContext};
 use crate::generate_gitignore::generate_gitignore;
+use crate::initializers::IdeInitArgs;
 use crate::patches::{apply_patch, Patch};
 use crate::render::{render_file, render_string};
 use crate::stm32cubemx::{generate_code, get_toolchain, run_script, Toolchain};
-use crate::templates::{
-    APP_C, APP_H, CLANG_FORMAT, CREATE_PROJECT_CMD1, CREATE_PROJECT_CMD2, EIDE_CONFIG,
-    EIDE_WORKSPACE, README_MD,
-};
 use crate::utils::get_author;
 use anyhow::anyhow;
 use chrono::Local;
-use clap::{Parser, Subcommand, ValueEnum};
-use dialoguer::{Confirm, Select};
+use clap::{Parser, Subcommand};
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::{Confirm, MultiSelect};
 use serde::Serialize;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::{env, fs};
-use tracing::{error, info, warn};
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum FPUType {
-    Hard,
-    Soft,
-}
+use tracing::{error, info};
 
 #[derive(Subcommand)]
 enum Commands {
@@ -38,23 +29,26 @@ enum Commands {
     Init(InitArgs),
 
     /// 创建新项目
-    Create {
-        /// 项目名
-        project_name: String,
+    Create(CreateArgs),
+}
 
-        /// 使用的工具链
-        #[clap(short, long)]
-        #[arg(default_value = "stm32cubeide")]
-        toolchain: Toolchain,
+#[derive(Parser, Debug)]
+struct CreateArgs {
+    /// 项目名
+    project_name: String,
 
-        /// 是否在创建后立即初始化项目
-        #[arg(long)]
-        run_init: bool,
+    /// 使用的工具链
+    #[clap(short, long)]
+    #[arg(default_value = "stm32cubeide")]
+    toolchain: Toolchain,
 
-        /// 使用 init 的参数
-        #[command(flatten)]
-        init_args: InitArgs,
-    },
+    /// 是否在创建后立即初始化项目
+    #[arg(long)]
+    run_init: bool,
+
+    /// 使用 init 的参数
+    #[command(flatten)]
+    init_args: InitArgs,
 }
 
 #[derive(Parser, Debug)]
@@ -74,12 +68,11 @@ struct InitArgs {
         default_value_t = false
     )]
     skip_non_intrusive_headers: bool,
-    /// 选择 FPU 类型
-    #[arg(long, short, default_value = "hard")]
-    fpu: FPUType,
     /// 强制重新生成
     #[arg(long)]
     force: bool,
+    #[command(flatten)]
+    init_args: IdeInitArgs,
 }
 
 #[derive(Parser)]
@@ -103,34 +96,25 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Init(args) => {
-            run_init(
-                args.skip_generate_user_code,
-                args.skip_generate_clang_format,
-                args.skip_non_intrusive_headers,
-                args.fpu,
-                args.force,
-            )?;
+            run_init(args)?;
         }
-        Commands::Create {
-            project_name,
-            toolchain,
-            run_init,
-            init_args,
-        } => {
-            run_create(project_name, toolchain, run_init, init_args)?;
+        Commands::Create(args) => {
+            run_create(args)?;
         }
     }
 
     Ok(())
 }
 
-fn run_init(
-    skip_generate_user_code: bool,
-    skip_generate_clang_format: bool,
-    skip_non_intrusive_headers: bool,
-    fpu: FPUType,
-    force: bool,
-) -> std::io::Result<()> {
+fn run_init(args: InitArgs) -> anyhow::Result<()> {
+    let ides = initializers::all();
+    let items: Vec<&str> = ides.iter().map(|i| i.name()).collect();
+
+    let chosen = MultiSelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select IDEs to initialize")
+        .items(&items)
+        .interact()?;
+
     // 渲染上下文
     let author = get_author();
 
@@ -160,14 +144,19 @@ fn run_init(
         }
     }
     info!("Generating .gitignore file...");
-    generate_gitignore(None, force)?;
+    generate_gitignore(None, args.force)?;
 
-    if !skip_generate_clang_format {
+    if !args.skip_generate_clang_format {
         info!("Generating .clang-format file");
-        render_file(".clang-format", CLANG_FORMAT, &ctx, force)?;
+        render_file(
+            ".clang-format",
+            include_str!("templates/clang-format.tmpl"),
+            &ctx,
+            args.force,
+        )?;
     }
 
-    if !skip_generate_user_code {
+    if !args.skip_generate_user_code {
         info!("Generating user code directories...");
         let directories: Vec<&str> = vec![
             "UserCode/bsp",
@@ -182,13 +171,32 @@ fn run_init(
             fs::create_dir_all(dir)?;
             info!("Created dir {}", dir);
         }
-        render_file("UserCode/app/app.h", APP_H, &ctx, force)?;
-        render_file("UserCode/app/app.c", APP_C, &ctx, force)?;
-        render_file("UserCode/README.md", README_MD, &ctx, force)?;
+        render_file(
+            "UserCode/app/app.h",
+            include_str!("templates/app.h.tmpl"),
+            &ctx,
+            args.force,
+        )?;
+        render_file(
+            "UserCode/app/app.c",
+            include_str!("templates/app.c.tmpl"),
+            &ctx,
+            args.force,
+        )?;
+        render_file(
+            "UserCode/README.md",
+            include_str!("templates/README.md.tmpl"),
+            &ctx,
+            args.force,
+        )?;
     }
 
-    if !skip_non_intrusive_headers {
-        if skip_generate_user_code {
+    for idx in chosen {
+        let _ = ides[idx].init(&args.init_args, args.force);
+    }
+
+    if !args.skip_non_intrusive_headers {
+        if args.skip_generate_user_code {
             info!("Skipping non-intrusive headers due to skip_generate_user_code");
         } else {
             info!("Generating non-intrusive headers");
@@ -209,25 +217,16 @@ fn run_init(
         }
     }
 
-    if Path::new("CMakeLists_template.txt").exists() {
-        info!("Found `CMakeLists_template.txt`, initializing CLion project...");
-        clion_custom_init(fpu)?;
-    }
-    if Path::new("Makefile").exists() {
-        info!("Found `Makefile`, initializing Makefile project...");
-        let choice = Select::new()
-            .with_prompt("Choose your ide")
-            .item("VSCode + EIDE")
-            .item("None")
-            .default(0)
-            .interact()?;
-        match choice {
-            0_usize => eide_custom_init(force)?,
-            1_usize => {
-                warn!("--");
-            }
-            2_usize.. => todo!(),
+    let status = Command::new("git").args(&["add", "."]).status()?;
+    if status.success() {
+        let status = Command::new("git")
+            .args(&["commit", "-m", "Initial commit"])
+            .status()?;
+        if !status.success() {
+            error!("Git first commit failed");
         }
+    } else {
+        error!("Git first commit failed");
     }
 
     info!("STM32 project initialized!");
@@ -235,106 +234,15 @@ fn run_init(
 }
 
 #[derive(Serialize)]
-struct EIDEProjectFile<'a> {
-    path: &'a String,
+pub struct CreateContext<'a> {
+    pub project_name: &'a String,
+    pub project_dir: &'a String,
+    pub ioc_file_path: &'a String,
+    pub toolchain: &'a str,
+    pub generate_under_root: bool,
 }
-
-fn eide_custom_init(force: bool) -> std::io::Result<()> {
-    let makefile = fs::read_to_string("Makefile")?;
-    let parsed_makefile = makefile_parser::parse_makefile(makefile.as_str());
-
-    let mut files = Vec::with_capacity(parsed_makefile.asm_sources.len());
-    for source in parsed_makefile.asm_sources.iter() {
-        files.push(EIDEProjectFile { path: source });
-    }
-
-    let project_name = parsed_makefile.target.unwrap_or("".to_string());
-
-    // list dir
-    let mut src = Vec::new();
-    let path = Path::new(".");
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(name) = path.file_name() {
-                if let Some(name_str) = name.to_str() {
-                    if !name_str.starts_with('.') {
-                        src.push(name_str.to_string());
-                    }
-                }
-            }
-        }
-    }
-    let mut includes = parsed_makefile.includes;
-    includes.push("UserCode".to_string());
-
-    let ctx = EIDEConfigContext {
-        project_name: &project_name,
-        ld_file_path: &parsed_makefile.ldscript.unwrap_or_default(),
-        src_dirs: &serde_json::to_string(&src)?,
-        include_list: &serde_json::to_string(&includes)?,
-        define_list: &serde_json::to_string(&parsed_makefile.defines)?,
-        src_files: &serde_json::to_string(&files)?,
-    };
-
-    info!("Generating EIDE config file...");
-    render_file(".eide/eide.json", EIDE_CONFIG, &ctx, force)?;
-    info!("Generating EIDE workspace file...");
-    render_file(
-        format!("{project_name}.code-workspace").as_str(),
-        EIDE_WORKSPACE,
-        &ctx,
-        force,
-    )?;
-
-    Ok(())
-}
-
-fn clion_custom_init(fpu: FPUType) -> std::io::Result<()> {
-    apply_patch(&Patch::Replace {
-        file: "CMakeLists_template.txt".to_string(),
-        find: "include_directories(${includes})".to_string(),
-        insert: "include_directories(${includes} UserCode)".to_string(),
-    })?;
-    apply_patch(&Patch::Replace {
-        file: "CMakeLists_template.txt".to_string(),
-        find: "file(GLOB_RECURSE SOURCES ${sources})".to_string(),
-        insert: "file(GLOB_RECURSE SOURCES ${sources} \"UserCode/*.*\")".to_string(),
-    })?;
-    match fpu {
-        FPUType::Hard => apply_patch(&Patch::RegexReplace {
-            file: "CMakeLists_template.txt".to_string(),
-            pattern: "(?ms)^#Uncomment for hardware floating point(?:\n#.*?)*\n?(?:\n|$)"
-                .to_string(),
-            insert: "${0/#/}".to_string(),
-        }),
-        FPUType::Soft => apply_patch(&Patch::RegexReplace {
-            file: "CMakeLists_template.txt".to_string(),
-            pattern: "(?ms)^#Uncomment for hardware floating point(?:\n#.*?)*\n?(?:\n|$)"
-                .to_string(),
-            insert: "${0/#/}".to_string(),
-        }),
-    }?;
-    info!("Try to regenerate code(using STM32CubeMX)...");
-    match generate_code(Some(Toolchain::STM32CubeIDE)) {
-        Ok(_) => {
-            info!("Regenerate code successfully!")
-        }
-        Err(_) => {
-            warn!("Regenerate code failed, please regenerate code manually!");
-        }
-    };
-    Ok(())
-}
-
-fn run_create(
-    project_name: String,
-    toolchain: Toolchain,
-    run_init_: bool,
-    init_args: InitArgs,
-) -> anyhow::Result<()> {
-    let path = Path::new(&project_name);
+fn run_create(args: CreateArgs) -> anyhow::Result<()> {
+    let path = Path::new(&args.project_name);
     if path.exists() {
         let result = Confirm::new()
             .with_prompt(
@@ -348,24 +256,24 @@ fn run_create(
         }
         fs::remove_dir_all(path)?;
     }
-    fs::create_dir_all(&project_name)?;
-    env::set_current_dir(&project_name)?;
+    fs::create_dir_all(&args.project_name)?;
+    env::set_current_dir(&args.project_name)?;
     let current_dir = env::current_dir()?;
 
     let ctx = CreateContext {
-        project_name: &project_name,
+        project_name: &args.project_name,
         project_dir: &current_dir.to_string_lossy().to_string(),
         ioc_file_path: &current_dir
-            .join(format!("{project_name}.ioc"))
+            .join(format!("{}.ioc", args.project_name))
             .to_string_lossy()
             .to_string(),
-        toolchain: get_toolchain(&toolchain),
-        generate_under_root: toolchain == Toolchain::STM32CubeIDE,
+        toolchain: get_toolchain(&args.toolchain),
+        generate_under_root: args.toolchain == Toolchain::STM32CubeIDE,
     };
-    info!("Using toolchain {}", get_toolchain(&toolchain));
+    info!("Using toolchain {}", get_toolchain(&args.toolchain));
 
     // 渲染初次运行的脚本
-    let script = render_string(CREATE_PROJECT_CMD1, &ctx)?;
+    let script = render_string(include_str!("templates/create-project-cmd1.tmpl"), &ctx)?;
     info!("Running first script");
     match run_script(script) {
         Ok(_) => {}
@@ -376,12 +284,12 @@ fn run_create(
     };
     info!("Patching .ioc file");
     apply_patch(&Patch::RegexReplace {
-        file: format!("{project_name}.ioc"),
+        file: format!("{}.ioc", args.project_name),
         pattern: r"RCC\.HSE_VALUE=(\d+)".to_string(),
         insert: "RCC.HSE_VALUE=8000000".to_string(),
     })?;
     // 渲染第二次运行的脚本
-    let script = render_string(CREATE_PROJECT_CMD2, &ctx)?;
+    let script = render_string(include_str!("templates/create-project-cmd2.tmpl"), &ctx)?;
     info!("Running second script");
     match run_script(script) {
         Ok(_) => {}
@@ -391,15 +299,9 @@ fn run_create(
         }
     };
 
-    if run_init_ {
+    if args.run_init {
         info!("Running init process");
-        run_init(
-            init_args.skip_generate_user_code,
-            init_args.skip_generate_clang_format,
-            init_args.skip_non_intrusive_headers,
-            init_args.fpu,
-            init_args.force,
-        )?;
+        run_init(args.init_args)?;
     }
     Ok(())
 }

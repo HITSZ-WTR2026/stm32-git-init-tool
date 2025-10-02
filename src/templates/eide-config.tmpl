@@ -18,7 +18,7 @@
       "compileConfig": \{
         "cpuType": "Cortex-M4",
         "archExtensions": "",
-        "floatingPointHardware": "single",
+        "floatingPointHardware": "{floating_point_hardware}",
         "scatterFilePath": "{ld_file_path}",
         "useCustomScatterFile": true,
         "storageLayout": \{
@@ -64,7 +64,7 @@
           "beforeBuildTasks": [],
           "afterBuildTasks": [],
           "global": \{
-            "$float-abi-type": "hard",
+            "$float-abi-type": "{fpu_type}",
             "output-debug-info": "enable",
             "use-newlib-nano": true,
             "not-use-syscalls": true,

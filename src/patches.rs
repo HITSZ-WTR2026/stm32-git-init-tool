@@ -6,11 +6,26 @@ use std::fs;
 #[serde(tag = "mode")]
 pub enum Patch {
     #[serde(rename = "append")]
-    Append { file: String, after: String, insert: String, marker: String },
+    Append {
+        file: String,
+        after: String,
+        insert: String,
+        marker: String,
+    },
     #[serde(rename = "replace")]
-    Replace { file: String, find: String, insert: String },
+    Replace {
+        file: String,
+        find: String,
+        insert: String,
+    },
     #[serde(rename = "regex_replace")]
-    RegexReplace { file: String, pattern: String, insert: String },
+    RegexReplace {
+        file: String,
+        pattern: String,
+        insert: String,
+    },
+    #[serde(rename = "uncomment_block")]
+    UncommentBlock { file: String, marker: String },
 }
 
 pub fn apply_patch(patch: &Patch) -> std::io::Result<()> {
@@ -20,8 +35,15 @@ pub fn apply_patch(patch: &Patch) -> std::io::Result<()> {
     };
 
     let new_content = match patch {
-        Patch::Append { after, insert, marker, .. } => {
-            if content.contains(marker) { return Ok(()); }
+        Patch::Append {
+            after,
+            insert,
+            marker,
+            ..
+        } => {
+            if content.contains(marker) {
+                return Ok(());
+            }
             content
                 .lines()
                 .map(|line| {
@@ -32,18 +54,46 @@ pub fn apply_patch(patch: &Patch) -> std::io::Result<()> {
                     }
                 })
                 .collect::<Vec<_>>()
-                .join("\n") + "\n"
+                .join("\n")
+                + "\n"
         }
         Patch::Replace { find, insert, .. } => {
-            if content.contains(insert) { return Ok(()); }
+            if content.contains(insert) {
+                return Ok(());
+            }
             content.replace(find, insert)
         }
-        Patch::RegexReplace { pattern, insert, .. } => {
+        Patch::RegexReplace {
+            pattern, insert, ..
+        } => {
             let re = Regex::new(pattern).unwrap();
             if re.is_match(&content) && content.contains(insert) {
                 return Ok(());
             }
             re.replace_all(&content, insert.as_str()).to_string()
+        }
+        Patch::UncommentBlock { marker, .. } => {
+            let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+
+            let mut in_block = false;
+            for i in 0..lines.len() {
+                if lines[i].contains(marker) {
+                    in_block = true;
+                    continue; // marker 行本身保留
+                }
+
+                if in_block {
+                    if lines[i].starts_with('#') {
+                        // 去掉行首 "# " 或 "#"
+                        lines[i] = lines[i].trim_start_matches('#').trim().to_string();
+                    } else {
+                        // 遇到非注释行/空行，说明 block 结束
+                        break;
+                    }
+                }
+            }
+
+            lines.join("\n") + "\n"
         }
     };
 
@@ -56,5 +106,6 @@ fn get_file(patch: &Patch) -> &str {
         Patch::Append { file, .. } => file,
         Patch::Replace { file, .. } => file,
         Patch::RegexReplace { file, .. } => file,
+        Patch::UncommentBlock { file, .. } => file,
     }
 }
